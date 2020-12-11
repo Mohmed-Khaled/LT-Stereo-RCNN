@@ -46,7 +46,7 @@ if __name__ == '__main__':
     if not os.path.exists(input_dir):
         raise Exception('There is no input directory for loading network from ' + input_dir)
     load_name = os.path.join(input_dir,
-                             'stereo_rcnn_{}_{}.pth'.format(args.checkepoch, args.checkpoint))
+                             'rt_stereo_rcnn_{}_{}.pth'.format(args.checkepoch, args.checkpoint))
     kitti_classes = np.asarray(['__background__', 'Car'])
 
     # initialize the network here.
@@ -118,12 +118,18 @@ if __name__ == '__main__':
         im_right_data.resize_(img_right.size()).copy_(img_right)
         im_info.resize_(info.size()).copy_(info)
 
+        num_params = sum(p.numel() for p in stereoRCNN.parameters())
+        num_params_train = sum(p.numel() for p in stereoRCNN.parameters() if p.requires_grad)
+        print("Number of parameters: {}".format(num_params))
+        print("Number of trainable parameters: {}".format(num_params_train))
+        print("Number of freezed parameters: {}".format(num_params - num_params_train))
+
         det_tic = time.time()
         rois_left, rois_right, cls_prob, bbox_pred, bbox_pred_dim, kpts_prob, \
         left_prob, right_prob, rpn_loss_cls, rpn_loss_box_left_right, \
         RCNN_loss_cls, RCNN_loss_bbox, RCNN_loss_dim_orien, RCNN_loss_kpts, rois_label = \
             stereoRCNN(im_left_data, im_right_data, im_info, gt_boxes, gt_boxes,
-                       gt_boxes, gt_boxes, gt_boxes, num_boxes)
+                    gt_boxes, gt_boxes, gt_boxes, num_boxes)
 
         scores = cls_prob.data
         boxes_left = rois_left.data[:, :, 1:5]
@@ -321,7 +327,7 @@ if __name__ == '__main__':
 
                 solve_time = time.time() - solve_tic
 
-        sys.stdout.write('demo mode (Press Esc to exit!) \r' \
+        print('demo mode: det_time {:.2f}s, solve time {:.2f}s (Press Esc to exit!) \r' \
                          .format(detect_time, solve_time))
 
         im2show = np.concatenate((im2show_left, im2show_right), axis=0)

@@ -213,10 +213,10 @@ __C.ANCHOR_RATIOS = [0.5,1,2]
 __C.FEAT_STRIDE = [16, ]
 
 # Anchor scales for RPN_FPN
-__C.FPN_ANCHOR_SCALES = [32, 64, 128, 256, 512]
+__C.FPN_ANCHOR_SCALES = [[8,16,32]]
 
 # Feature stride for RPN_FPN
-__C.FPN_FEAT_STRIDES = [4, 8, 16, 32, 64]
+__C.FPN_FEAT_STRIDES = [16]
 
 # Anchor stride for RPN_FPN
 __C.FPN_ANCHOR_STRIDE = 1
