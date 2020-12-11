@@ -16,7 +16,7 @@ import numpy as np
 import numpy.random as npr
 
 from model.utils.config import cfg
-from model.rpn.generate_anchors import generate_anchors, generate_anchors_all_pyramids
+from model.rpn.generate_anchors import generate_anchors, generate_anchors_single_pyramid
 from model.rpn.bbox_transform import clip_boxes, bbox_overlaps_batch, bbox_transform_batch
 
 import pdb
@@ -28,12 +28,12 @@ class _AnchorTargetLayer(nn.Module):
         Assign anchors to ground-truth targets. Produces anchor classification
         labels and bounding-box regression targets.
     """
-    def __init__(self, feat_stride, ratios):
+    def __init__(self, feat_stride, scales, ratios):
         super(_AnchorTargetLayer, self).__init__()
         self._anchor_ratios = ratios
         self._feat_stride = feat_stride
-        self._fpn_scales = np.array(cfg.FPN_ANCHOR_SCALES)
-        self._fpn_feature_strides = np.array(cfg.FPN_FEAT_STRIDES)
+        self._fpn_scales = np.array(scales)
+        self._fpn_feature_stride = cfg.FPN_FEAT_STRIDE
         self._fpn_anchor_stride = cfg.FPN_ANCHOR_STRIDE
 
         # allow boxes to sit over the edge by a small amount
@@ -53,7 +53,7 @@ class _AnchorTargetLayer(nn.Module):
         gt_boxes_merge = input[3]
         im_info = input[4]
         num_boxes = input[5]
-        feat_shapes = input[6]
+        feat_shape = input[6]
 
         # NOTE: need to change
         # height, width = scores.size(2), scores.size(3)
@@ -61,8 +61,8 @@ class _AnchorTargetLayer(nn.Module):
 
         batch_size = gt_boxes_left.size(0)
 
-        anchors = torch.from_numpy(generate_anchors_all_pyramids(self._fpn_scales, self._anchor_ratios, 
-                feat_shapes, self._fpn_feature_strides, self._fpn_anchor_stride)).type_as(scores)    
+        anchors = torch.from_numpy(generate_anchors_single_pyramid(self._fpn_scales, self._anchor_ratios,
+                feat_shape, self._fpn_feature_stride, self._fpn_anchor_stride)).type_as(scores)
         total_anchors = anchors.size(0)
         
         keep = ((anchors[:, 0] >= -self._allowed_border) &

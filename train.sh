@@ -1,1 +1,1 @@
-CUDA_VISIBLE_DEVICES=0 python trainval_net.py --bs 1
+CUDA_VISIBLE_DEVICES=0 python trainval_net.py --bs 1 --epochs 1

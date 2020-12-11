@@ -26,17 +26,15 @@ class _RTStereoRCNN(nn.Module):
 
         # loss
         self.RCNN_loss_cls = 0
-        self.RCNN_loss_bbox_left_right = 0
-        self.RCNN_loss_dis = 0
         self.RCNN_loss_dim = 0
         self.RCNN_loss_dim_orien = 0
         self.RCNN_loss_kpts = 0
 
-        self.maxpool2d = nn.MaxPool2d(1, stride=2)
         #define base network
         self.RCNN_base = models.mobilenet_v2(pretrained=True).features
+        self.RCNN_base_reduce = nn.Conv2d(1280, 256, kernel_size=1, stride=1, padding=0)
         for p in self.RCNN_base.parameters(): p.requires_grad=False
-        self.dout_base_model = 1280
+        self.dout_base_model = 256
 
         # define rpn
         self.RCNN_rpn = _Stereo_RPN(self.dout_base_model)
@@ -56,19 +54,19 @@ class _RTStereoRCNN(nn.Module):
         )
 
         self.RCNN_kpts = nn.Sequential(
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.ConvTranspose2d(256, 256, kernel_size=2, stride=2),
+            nn.ConvTranspose2d(self.dout_base_model, self.dout_base_model, kernel_size=2, stride=2),
             nn.ReLU(True)
         )
 
@@ -76,7 +74,7 @@ class _RTStereoRCNN(nn.Module):
 
         self.RCNN_bbox_pred = nn.Linear(2048, 6*self.n_classes)
         self.RCNN_dim_orien_pred = nn.Linear(2048, 5*self.n_classes)
-        self.kpts_class = nn.Conv2d(256, 6, kernel_size=1, stride=1, padding=0)
+        self.kpts_class = nn.Conv2d(self.dout_base_model, 6, kernel_size=1, stride=1, padding=0)
 
     def _init_weights(self):
         def normal_init(m, mean, stddev, truncated=False):
@@ -109,18 +107,19 @@ class _RTStereoRCNN(nn.Module):
         normal_init(self.kpts_class, 0, 0.1, cfg.TRAIN.TRUNCATED)
         weights_init(self.RCNN_top, 0, 0.01, cfg.TRAIN.TRUNCATED)
         weights_init(self.RCNN_kpts, 0, 0.1, cfg.TRAIN.TRUNCATED)
+        weights_init(self.RCNN_base_reduce, 0, 0.1, cfg.TRAIN.TRUNCATED)
 
     def create_architecture(self):
         self._init_modules()
         self._init_weights()
 
-    def RoI_Feat(self, feat_maps, rois, im_info, kpts=False, single_level=None):
+    def RoI_Feat(self, feat_map, rois, im_info, kpts=False, single_level=None):
         roi_pool_feats = []
-        scale = feat_maps[0].size(2) / im_info[0][0]
+        scale = feat_map.size(2) / im_info[0][0]
         if kpts is True:
-            feat = self.RCNN_roi_kpts_align(feat_maps[0], rois, scale)
+            feat = self.RCNN_roi_kpts_align(feat_map, rois, scale)
         else:
-            feat = self.RCNN_roi_align(feat_maps[0], rois, scale)
+            feat = self.RCNN_roi_align(feat_map, rois, scale)
         roi_pool_feats.append(feat)
         roi_pool_feat = torch.cat(roi_pool_feats, 0)
             
@@ -151,19 +150,13 @@ class _RTStereoRCNN(nn.Module):
         num_boxes = num_boxes.data
 
         ## feed left image data to base model to obtain base feature map
-        feat_left = self.RCNN_base(im_left_data)
+        feat_left = self.RCNN_base_reduce(self.RCNN_base(im_left_data))
 
         ## feed right image data to base model to obtain base feature map
-        feat_right = self.RCNN_base(im_right_data)
-
-        rpn_feature_maps_left = [feat_left]
-        mrcnn_feature_maps_left = [feat_left]
-
-        rpn_feature_maps_right = [feat_right]
-        mrcnn_feature_maps_right = [feat_right]
+        feat_right = self.RCNN_base_reduce(self.RCNN_base(im_right_data))
 
         rois_left, rois_right, rpn_loss_cls, rpn_loss_bbox_left_right = \
-            self.RCNN_rpn(rpn_feature_maps_left, rpn_feature_maps_right,
+            self.RCNN_rpn(feat_left, feat_right,
                           im_info, gt_boxes_left, gt_boxes_right, gt_boxes_merge, num_boxes)
 
         # if it is training phrase, then use ground trubut bboxes for refining
@@ -215,10 +208,8 @@ class _RTStereoRCNN(nn.Module):
         rois_right = Variable(rois_right)
 
         # pooling features based on rois, output 14x14 map
-        #roi_feat_left = self.RoI_Feat(mrcnn_feature_maps_left, rois_left, im_info)
-        #roi_feat_right = self.RoI_Feat(mrcnn_feature_maps_right, rois_right, im_info)
-        roi_feat_semantic = torch.cat((self.RoI_Feat(mrcnn_feature_maps_left, rois_left, im_info),
-                                       self.RoI_Feat(mrcnn_feature_maps_right, rois_right, im_info)),1)
+        roi_feat_semantic = torch.cat((self.RoI_Feat(feat_left, rois_left, im_info),
+                                       self.RoI_Feat(feat_right, rois_right, im_info)),1)
 
         # feed pooled features to top model
         roi_feat_semantic = self._head_to_tail(roi_feat_semantic)
@@ -229,7 +220,7 @@ class _RTStereoRCNN(nn.Module):
         cls_prob = F.softmax(cls_score, 1) 
 
         # for keypoint
-        roi_feat_dense = self.RoI_Feat(mrcnn_feature_maps_left, rois_left, im_info, kpts=True)
+        roi_feat_dense = self.RoI_Feat(feat_left, rois_left, im_info, kpts=True)
         roi_feat_dense = self.RCNN_kpts(roi_feat_dense) # num x 256 x 28 x 28
         kpts_pred_all = self.kpts_class(roi_feat_dense) # num x 6 x cfg.KPTS_GRID x cfg.KPTS_GRID
         kpts_pred_all = kpts_pred_all.sum(2)            # num x 6 x cfg.KPTS_GRID
