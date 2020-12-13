@@ -25,7 +25,7 @@ from model.dense_align import dense_align
 from model.roi_layers import nms
 from model.rpn.bbox_transform import bbox_transform_inv, kpts_transform_inv, border_transform_inv
 from model.rpn.bbox_transform import clip_boxes
-from model.stereo_rcnn.resnet import resnet
+from model.rt_stereo_rcnn.rt_stereo_rcnn import _RTStereoRCNN
 from model.utils import box_estimator as box_estimator
 from model.utils import kitti_utils
 from model.utils import vis_3d_utils as vis_utils
@@ -61,7 +61,7 @@ if __name__ == '__main__':
     shutil.rmtree(result_dir)
 
   # initilize the network here.
-  stereoRCNN = resnet(imdb.classes, 101, pretrained=False)
+  stereoRCNN = _RTStereoRCNN(kitti_classes)
   stereoRCNN.create_architecture()
 
   print("load checkpoint %s" % (load_name))
