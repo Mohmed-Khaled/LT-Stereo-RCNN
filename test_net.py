@@ -61,7 +61,7 @@ if __name__ == '__main__':
     shutil.rmtree(result_dir)
 
   # initilize the network here.
-  stereoRCNN = _RTStereoRCNN(kitti_classes)
+  stereoRCNN = _RTStereoRCNN((imdb.classes)
   stereoRCNN.create_architecture()
 
   print("load checkpoint %s" % (load_name))
