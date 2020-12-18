@@ -21,7 +21,7 @@ class _LTStereoRCNN(nn.Module):
     """ FPN """
     def __init__(self, classes, backbone_pretrained):
         super(_LTStereoRCNN, self).__init__()
-        self.dout_base_model = 256
+        self.dout_base_model = 128
         self.backbone_pretrained = backbone_pretrained
         self.classes = classes
         self.n_classes = len(classes)
@@ -50,20 +50,20 @@ class _LTStereoRCNN(nn.Module):
         self.RCNN_layer4 = mobilenet[14:]
 
         # Top layer
-        self.RCNN_toplayer = nn.Conv2d(1280, 256, kernel_size=1, stride=1, padding=0)  # reduce channel
+        self.RCNN_toplayer = nn.Conv2d(1280, self.dout_base_model, kernel_size=1, stride=1, padding=0)  # reduce channel
 
         # Smooth layers
-        self.RCNN_smooth1 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
-        self.RCNN_smooth2 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
-        self.RCNN_smooth3 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
+        self.RCNN_smooth1 = nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1)
+        self.RCNN_smooth2 = nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1)
+        self.RCNN_smooth3 = nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1)
 
         # Lateral layers
-        self.RCNN_latlayer1 = nn.Conv2d(96, 256, kernel_size=1, stride=1, padding=0)
-        self.RCNN_latlayer2 = nn.Conv2d(32, 256, kernel_size=1, stride=1, padding=0)
-        self.RCNN_latlayer3 = nn.Conv2d(24, 256, kernel_size=1, stride=1, padding=0)
+        self.RCNN_latlayer1 = nn.Conv2d(96, self.dout_base_model, kernel_size=1, stride=1, padding=0)
+        self.RCNN_latlayer2 = nn.Conv2d(32, self.dout_base_model, kernel_size=1, stride=1, padding=0)
+        self.RCNN_latlayer3 = nn.Conv2d(24, self.dout_base_model, kernel_size=1, stride=1, padding=0)
 
         self.RCNN_top = nn.Sequential(
-            nn.Conv2d(512, 2048, kernel_size=cfg.POOLING_SIZE, stride=cfg.POOLING_SIZE, padding=0),
+            nn.Conv2d(2 * self.dout_base_model, 2048, kernel_size=cfg.POOLING_SIZE, stride=cfg.POOLING_SIZE, padding=0),
             nn.ReLU(True),
             nn.Dropout(p=0.2),
             nn.Conv2d(2048, 2048, kernel_size=1, stride=1, padding=0),
@@ -72,19 +72,19 @@ class _LTStereoRCNN(nn.Module):
         )
 
         self.RCNN_kpts = nn.Sequential(
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.ConvTranspose2d(256, 256, kernel_size=2, stride=2),
+            nn.ConvTranspose2d(self.dout_base_model, self.dout_base_model, kernel_size=2, stride=2),
             nn.ReLU(True)
         )
 
@@ -92,7 +92,7 @@ class _LTStereoRCNN(nn.Module):
 
         self.RCNN_bbox_pred = nn.Linear(2048, 6*self.n_classes)
         self.RCNN_dim_orien_pred = nn.Linear(2048, 5*self.n_classes)
-        self.kpts_class = nn.Conv2d(256, 6, kernel_size=1, stride=1, padding=0)
+        self.kpts_class = nn.Conv2d(self.dout_base_model, 6, kernel_size=1, stride=1, padding=0)
 
         # Fix blocks
         for p in self.RCNN_layer0.parameters(): p.requires_grad=False
@@ -265,14 +265,14 @@ class _LTStereoRCNN(nn.Module):
         c4_left = self.RCNN_layer3(c3_left)      # 96 x 1/16
         c5_left = self.RCNN_layer4(c4_left)      # 1280 x 1/32
         # Top-down
-        p5_left = self.RCNN_toplayer(c5_left)    # 256 x 1/32
+        p5_left = self.RCNN_toplayer(c5_left)    # self.dout_base_model x 1/32
         p4_left = self._upsample_add(p5_left, self.RCNN_latlayer1(c4_left))
-        p4_left = self.RCNN_smooth1(p4_left)     # 256 x 1/16
+        p4_left = self.RCNN_smooth1(p4_left)     # self.dout_base_model x 1/16
         p3_left = self._upsample_add(p4_left, self.RCNN_latlayer2(c3_left))
-        p3_left = self.RCNN_smooth2(p3_left)     # 256 x 1/8
+        p3_left = self.RCNN_smooth2(p3_left)     # self.dout_base_model x 1/8
         p2_left = self._upsample_add(p3_left, self.RCNN_latlayer3(c2_left))
-        p2_left = self.RCNN_smooth3(p2_left)     # 256 x 1/4
-        p6_left = self.maxpool2d(p5_left)        # 256 x 1/64
+        p2_left = self.RCNN_smooth3(p2_left)     # self.dout_base_model x 1/4
+        p6_left = self.maxpool2d(p5_left)        # self.dout_base_model x 1/64
 
         # feed right image data to base model to obtain base feature map
         # Bottom-up
@@ -365,7 +365,7 @@ class _LTStereoRCNN(nn.Module):
 
         # for keypoint
         roi_feat_dense = self.PyramidRoI_Feat(mrcnn_feature_maps_left, rois_left, im_info, kpts=True)
-        roi_feat_dense = self.RCNN_kpts(roi_feat_dense) # num x 256 x 28 x 28
+        roi_feat_dense = self.RCNN_kpts(roi_feat_dense) # num x self.dout_base_model x 28 x 28
         kpts_pred_all = self.kpts_class(roi_feat_dense) # num x 6 x cfg.KPTS_GRID x cfg.KPTS_GRID
         kpts_pred_all = kpts_pred_all.sum(2)            # num x 6 x cfg.KPTS_GRID
         kpts_pred = kpts_pred_all[:,:4,:].contiguous().view(-1, 4*cfg.KPTS_GRID)

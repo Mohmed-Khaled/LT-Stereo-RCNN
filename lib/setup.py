@@ -57,9 +57,9 @@ def get_extensions():
 
 
 setup(
-    name="faster_rcnn",
+    name="lt_stereo_rcnn",
     version="0.1",
-    description="object detection in pytorch",
+    description="Object Detection from Stereo Images in PyTorch",
     packages=find_packages(exclude=("configs", "tests",)),
     # install_requires=requirements,
     ext_modules=get_extensions(),
