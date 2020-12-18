@@ -20,8 +20,8 @@ Go to https://pytorch.org/ and choose your cuda version and run the command gene
 
 1.3 Clone Repo, Install Requirements, and Build:
 ```
-    git clone https://github.com/Mohmed-Khaled/MK-Stereo-RCNN.git
-    cd MK-Stereo-RCNN
+    git clone https://github.com/Mohmed-Khaled/LT-Stereo-RCNN.git
+    cd LT-Stereo-RCNN
     pip install -r requirements.txt
     ./build.sh
 ```
