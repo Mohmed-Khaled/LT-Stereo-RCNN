@@ -21,6 +21,8 @@ class _LTStereoRCNN(nn.Module):
     """ FPN """
     def __init__(self, classes, backbone_pretrained):
         super(_LTStereoRCNN, self).__init__()
+        self.dout_base_model = 256
+        self.backbone_pretrained = backbone_pretrained
         self.classes = classes
         self.n_classes = len(classes)
 
@@ -29,13 +31,8 @@ class _LTStereoRCNN(nn.Module):
         self.RCNN_loss_dim = 0
         self.RCNN_loss_dim_orien = 0
         self.RCNN_loss_kpts = 0
-
-        #define base network
-        self.RCNN_base = models.mobilenet_v2(pretrained=backbone_pretrained).features
-        self.RCNN_base_reduce = nn.Conv2d(1280, 256, kernel_size=1, stride=1, padding=0)
-        for p in self.RCNN_base.parameters(): p.requires_grad=False
-        self.dout_base_model = 256
-
+        
+        self.maxpool2d = nn.MaxPool2d(1, stride=2)
         # define rpn
         self.RCNN_rpn = _Stereo_RPN(self.dout_base_model)
         self.RCNN_proposal_target = _ProposalTargetLayer(self.n_classes)
@@ -44,6 +41,27 @@ class _LTStereoRCNN(nn.Module):
         self.RCNN_roi_kpts_align = ROIAlign((cfg.POOLING_SIZE*2, cfg.POOLING_SIZE*2), 1.0/16.0, 0)
     
     def _init_modules(self):
+        mobilenet = models.mobilenet_v2(pretrained=self.backbone_pretrained).features
+
+        self.RCNN_layer0 = mobilenet[:3]
+        self.RCNN_layer1 = mobilenet[3:4]
+        self.RCNN_layer2 = mobilenet[4:7]
+        self.RCNN_layer3 = mobilenet[7:14]
+        self.RCNN_layer4 = mobilenet[14:]
+
+        # Top layer
+        self.RCNN_toplayer = nn.Conv2d(1280, 256, kernel_size=1, stride=1, padding=0)  # reduce channel
+
+        # Smooth layers
+        self.RCNN_smooth1 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
+        self.RCNN_smooth2 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
+        self.RCNN_smooth3 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
+
+        # Lateral layers
+        self.RCNN_latlayer1 = nn.Conv2d(96, 256, kernel_size=1, stride=1, padding=0)
+        self.RCNN_latlayer2 = nn.Conv2d(32, 256, kernel_size=1, stride=1, padding=0)
+        self.RCNN_latlayer3 = nn.Conv2d(24, 256, kernel_size=1, stride=1, padding=0)
+
         self.RCNN_top = nn.Sequential(
             nn.Conv2d(512, 2048, kernel_size=cfg.POOLING_SIZE, stride=cfg.POOLING_SIZE, padding=0),
             nn.ReLU(True),
@@ -54,19 +72,19 @@ class _LTStereoRCNN(nn.Module):
         )
 
         self.RCNN_kpts = nn.Sequential(
-            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(self.dout_base_model, self.dout_base_model, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.ConvTranspose2d(self.dout_base_model, self.dout_base_model, kernel_size=2, stride=2),
+            nn.ConvTranspose2d(256, 256, kernel_size=2, stride=2),
             nn.ReLU(True)
         )
 
@@ -74,7 +92,23 @@ class _LTStereoRCNN(nn.Module):
 
         self.RCNN_bbox_pred = nn.Linear(2048, 6*self.n_classes)
         self.RCNN_dim_orien_pred = nn.Linear(2048, 5*self.n_classes)
-        self.kpts_class = nn.Conv2d(self.dout_base_model, 6, kernel_size=1, stride=1, padding=0)
+        self.kpts_class = nn.Conv2d(256, 6, kernel_size=1, stride=1, padding=0)
+
+        # Fix blocks
+        for p in self.RCNN_layer0.parameters(): p.requires_grad=False
+        for p in self.RCNN_layer1.parameters(): p.requires_grad=False
+        for p in self.RCNN_layer2.parameters(): p.requires_grad=False
+
+        def set_bn_fix(m):
+            classname = m.__class__.__name__
+            if classname.find('BatchNorm') != -1:
+                for p in m.parameters(): p.requires_grad=False
+        
+        self.RCNN_layer0.apply(set_bn_fix)
+        self.RCNN_layer1.apply(set_bn_fix)
+        self.RCNN_layer2.apply(set_bn_fix)
+        self.RCNN_layer3.apply(set_bn_fix)
+        self.RCNN_layer4.apply(set_bn_fix)
 
     def _init_weights(self):
         def normal_init(m, mean, stddev, truncated=False):
@@ -98,6 +132,14 @@ class _LTStereoRCNN(nn.Module):
                 m.weight.data.normal_(1.0, 0.02)
                 m.bias.data.fill_(0)
 
+        normal_init(self.RCNN_toplayer, 0, 0.01, cfg.TRAIN.TRUNCATED)
+        normal_init(self.RCNN_smooth1, 0, 0.01, cfg.TRAIN.TRUNCATED)
+        normal_init(self.RCNN_smooth2, 0, 0.01, cfg.TRAIN.TRUNCATED)
+        normal_init(self.RCNN_smooth3, 0, 0.01, cfg.TRAIN.TRUNCATED)
+        normal_init(self.RCNN_latlayer1, 0, 0.01, cfg.TRAIN.TRUNCATED)
+        normal_init(self.RCNN_latlayer2, 0, 0.01, cfg.TRAIN.TRUNCATED)
+        normal_init(self.RCNN_latlayer3, 0, 0.01, cfg.TRAIN.TRUNCATED)
+
         normal_init(self.RCNN_rpn.RPN_Conv, 0, 0.01, cfg.TRAIN.TRUNCATED)
         normal_init(self.RCNN_rpn.RPN_cls_score, 0, 0.01, cfg.TRAIN.TRUNCATED)
         normal_init(self.RCNN_rpn.RPN_bbox_pred_left_right, 0, 0.01, cfg.TRAIN.TRUNCATED)
@@ -107,21 +149,60 @@ class _LTStereoRCNN(nn.Module):
         normal_init(self.kpts_class, 0, 0.1, cfg.TRAIN.TRUNCATED)
         weights_init(self.RCNN_top, 0, 0.01, cfg.TRAIN.TRUNCATED)
         weights_init(self.RCNN_kpts, 0, 0.1, cfg.TRAIN.TRUNCATED)
-        weights_init(self.RCNN_base_reduce, 0, 0.1, cfg.TRAIN.TRUNCATED)
 
     def create_architecture(self):
         self._init_modules()
         self._init_weights()
 
-    def RoI_Feat(self, feat_map, rois, im_info, kpts=False, single_level=None):
+    def _upsample_add(self, x, y):
+        '''Upsample and add two feature maps.
+        Args:
+          x: (Variable) top feature map to be upsampled.
+          y: (Variable) lateral feature map.
+        Returns:
+          (Variable) added feature map.
+        Note in PyTorch, when input size is odd, the upsampled feature map
+        with `F.upsample(..., scale_factor=2, mode='nearest')`
+        maybe not equal to the lateral feature map size.
+        e.g.
+        original input size: [N,_,15,15] ->
+        conv2d feature map size: [N,_,8,8] ->
+        upsampled feature map size: [N,_,16,16]
+        So we choose bilinear upsample which supports arbitrary output sizes.
+        '''
+        _,_,H,W = y.size()
+        return F.interpolate(x, size=(H,W), mode='bilinear', align_corners=False) + y
+
+    def PyramidRoI_Feat(self, feat_maps, rois, im_info, kpts=False, single_level=None):
+        ''' roi pool on pyramid feature maps'''
+        # do roi pooling based on predicted rois
+        img_area = im_info[0][0] * im_info[0][1]
+        h = rois.data[:, 4] - rois.data[:, 2] + 1
+        w = rois.data[:, 3] - rois.data[:, 1] + 1
+        roi_level = torch.log(torch.sqrt(h * w) / 224.0)
+        roi_level = torch.round(roi_level + 4)
+        roi_level[roi_level < 2] = 2
+        roi_level[roi_level > 5] = 5
+
         roi_pool_feats = []
-        scale = feat_map.size(2) / im_info[0][0]
-        if kpts is True:
-            feat = self.RCNN_roi_kpts_align(feat_map, rois, scale)
-        else:
-            feat = self.RCNN_roi_align(feat_map, rois, scale)
-        roi_pool_feats.append(feat)
+        box_to_levels = []
+        for i, l in enumerate(range(2, 6)):
+            if (roi_level == l).sum() == 0:
+                continue
+            idx_l = (roi_level == l).nonzero(as_tuple=False).squeeze()
+            if idx_l.dim() == 0:
+                idx_l = idx_l.unsqueeze(0)
+            box_to_levels.append(idx_l)
+            scale = feat_maps[i].size(2) / im_info[0][0]
+            if kpts is True:
+                feat = self.RCNN_roi_kpts_align(feat_maps[i], rois[idx_l], scale)
+            else:
+                feat = self.RCNN_roi_align(feat_maps[i], rois[idx_l], scale)
+            roi_pool_feats.append(feat)
         roi_pool_feat = torch.cat(roi_pool_feats, 0)
+        box_to_level = torch.cat(box_to_levels, 0)
+        idx_sorted, order = torch.sort(box_to_level)
+        roi_pool_feat = roi_pool_feat[order]
             
         return roi_pool_feat
     
@@ -130,7 +211,34 @@ class _LTStereoRCNN(nn.Module):
         nn.Module.train(self, mode)
         if mode:
             # Set fixed blocks to be in eval mode
-            self.RCNN_base.eval()
+            self.RCNN_layer0.eval()
+            self.RCNN_layer1.eval()
+            self.RCNN_layer2.eval()
+            self.RCNN_layer3.train()
+            self.RCNN_layer4.train()
+
+            self.RCNN_smooth1.train()
+            self.RCNN_smooth2.train()
+            self.RCNN_smooth3.train()
+
+            self.RCNN_latlayer1.train()
+            self.RCNN_latlayer2.train()
+            self.RCNN_latlayer3.train()
+
+            self.RCNN_toplayer.train()
+            self.RCNN_kpts.train()
+            self.kpts_class.train()
+
+            def set_bn_eval(m):
+                classname = m.__class__.__name__
+                if classname.find('BatchNorm') != -1:
+                    m.eval()
+
+            self.RCNN_layer0.apply(set_bn_eval)
+            self.RCNN_layer1.apply(set_bn_eval)
+            self.RCNN_layer2.apply(set_bn_eval)
+            self.RCNN_layer3.apply(set_bn_eval)
+            self.RCNN_layer4.apply(set_bn_eval)
 
     def _head_to_tail(self, pool5):
         block5 = self.RCNN_top(pool5)
@@ -150,13 +258,47 @@ class _LTStereoRCNN(nn.Module):
         num_boxes = num_boxes.data
 
         ## feed left image data to base model to obtain base feature map
-        feat_left = self.RCNN_base_reduce(self.RCNN_base(im_left_data))
+        # Bottom-up
+        c1_left = self.RCNN_layer0(im_left_data) # 24 x 1/4
+        c2_left = self.RCNN_layer1(c1_left)      # 24 x 1/4
+        c3_left = self.RCNN_layer2(c2_left)      # 32 x 1/8
+        c4_left = self.RCNN_layer3(c3_left)      # 96 x 1/16
+        c5_left = self.RCNN_layer4(c4_left)      # 1280 x 1/32
+        # Top-down
+        p5_left = self.RCNN_toplayer(c5_left)    # 256 x 1/32
+        p4_left = self._upsample_add(p5_left, self.RCNN_latlayer1(c4_left))
+        p4_left = self.RCNN_smooth1(p4_left)     # 256 x 1/16
+        p3_left = self._upsample_add(p4_left, self.RCNN_latlayer2(c3_left))
+        p3_left = self.RCNN_smooth2(p3_left)     # 256 x 1/8
+        p2_left = self._upsample_add(p3_left, self.RCNN_latlayer3(c2_left))
+        p2_left = self.RCNN_smooth3(p2_left)     # 256 x 1/4
+        p6_left = self.maxpool2d(p5_left)        # 256 x 1/64
 
-        ## feed right image data to base model to obtain base feature map
-        feat_right = self.RCNN_base_reduce(self.RCNN_base(im_right_data))
+        # feed right image data to base model to obtain base feature map
+        # Bottom-up
+        c1_right = self.RCNN_layer0(im_right_data)
+        c2_right = self.RCNN_layer1(c1_right)
+        c3_right = self.RCNN_layer2(c2_right)
+        c4_right = self.RCNN_layer3(c3_right)
+        c5_right = self.RCNN_layer4(c4_right)
+        # Top-down
+        p5_right = self.RCNN_toplayer(c5_right)
+        p4_right = self._upsample_add(p5_right, self.RCNN_latlayer1(c4_right))
+        p4_right = self.RCNN_smooth1(p4_right)
+        p3_right = self._upsample_add(p4_right, self.RCNN_latlayer2(c3_right))
+        p3_right = self.RCNN_smooth2(p3_right)
+        p2_right = self._upsample_add(p3_right, self.RCNN_latlayer3(c2_right))
+        p2_right = self.RCNN_smooth3(p2_right)
+        p6_right = self.maxpool2d(p5_right)
+
+        rpn_feature_maps_left = [p2_left, p3_left, p4_left, p5_left, p6_left]
+        mrcnn_feature_maps_left = [p2_left, p3_left, p4_left, p5_left]
+
+        rpn_feature_maps_right = [p2_right, p3_right, p4_right, p5_right, p6_right]
+        mrcnn_feature_maps_right = [p2_right, p3_right, p4_right, p5_right]
 
         rois_left, rois_right, rpn_loss_cls, rpn_loss_bbox_left_right = \
-            self.RCNN_rpn(feat_left, feat_right,
+            self.RCNN_rpn(rpn_feature_maps_left, rpn_feature_maps_right,
                           im_info, gt_boxes_left, gt_boxes_right, gt_boxes_merge, num_boxes)
 
         # if it is training phrase, then use ground trubut bboxes for refining
@@ -208,8 +350,10 @@ class _LTStereoRCNN(nn.Module):
         rois_right = Variable(rois_right)
 
         # pooling features based on rois, output 14x14 map
-        roi_feat_semantic = torch.cat((self.RoI_Feat(feat_left, rois_left, im_info),
-                                       self.RoI_Feat(feat_right, rois_right, im_info)),1)
+        #roi_feat_left = self.PyramidRoI_Feat(mrcnn_feature_maps_left, rois_left, im_info)
+        #roi_feat_right = self.PyramidRoI_Feat(mrcnn_feature_maps_right, rois_right, im_info)
+        roi_feat_semantic = torch.cat((self.PyramidRoI_Feat(mrcnn_feature_maps_left, rois_left, im_info),
+                                       self.PyramidRoI_Feat(mrcnn_feature_maps_right, rois_right, im_info)),1)
 
         # feed pooled features to top model
         roi_feat_semantic = self._head_to_tail(roi_feat_semantic)
@@ -220,7 +364,7 @@ class _LTStereoRCNN(nn.Module):
         cls_prob = F.softmax(cls_score, 1) 
 
         # for keypoint
-        roi_feat_dense = self.RoI_Feat(feat_left, rois_left, im_info, kpts=True)
+        roi_feat_dense = self.PyramidRoI_Feat(mrcnn_feature_maps_left, rois_left, im_info, kpts=True)
         roi_feat_dense = self.RCNN_kpts(roi_feat_dense) # num x 256 x 28 x 28
         kpts_pred_all = self.kpts_class(roi_feat_dense) # num x 6 x cfg.KPTS_GRID x cfg.KPTS_GRID
         kpts_pred_all = kpts_pred_all.sum(2)            # num x 6 x cfg.KPTS_GRID

@@ -154,7 +154,7 @@ if __name__ == '__main__':
     gt_kpts = Variable(torch.FloatTensor(1))
 
   # initilize the network here.
-  stereoRCNN = _LTStereoRCNN(imdb.classes)
+  stereoRCNN = _LTStereoRCNN(imdb.classes, backbone_pretrained=True)
 
   stereoRCNN.create_architecture()
 

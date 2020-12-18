@@ -61,7 +61,7 @@ if __name__ == '__main__':
     shutil.rmtree(result_dir)
 
   # initilize the network here.
-  stereoRCNN = _LTStereoRCNN(imdb.classes)
+  stereoRCNN = _LTStereoRCNN(imdb.classes, backbone_pretrained=False)
   stereoRCNN.create_architecture()
 
   print("load checkpoint %s" % (load_name))

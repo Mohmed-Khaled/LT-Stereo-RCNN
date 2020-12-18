@@ -50,7 +50,7 @@ if __name__ == '__main__':
     kitti_classes = np.asarray(['__background__', 'Car'])
 
     # initialize the network here.
-    stereoRCNN = _LTStereoRCNN(kitti_classes)
+    stereoRCNN = _LTStereoRCNN(kitti_classes, backbone_pretrained=False)
     stereoRCNN.create_architecture()
 
     print("load checkpoint %s" % load_name)
