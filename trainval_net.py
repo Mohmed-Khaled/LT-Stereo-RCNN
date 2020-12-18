@@ -17,7 +17,7 @@ import time
 
 import numpy as np
 import torch
-from model.rt_stereo_rcnn.rt_stereo_rcnn import _RTStereoRCNN
+from model.lt_stereo_rcnn.lt_stereo_rcnn import _LTStereoRCNN
 from model.utils.config import cfg
 from model.utils.net_utils import adjust_learning_rate, save_checkpoint, clip_gradient
 from roi_data_layer.roibatchLoader import roibatchLoader
@@ -154,7 +154,7 @@ if __name__ == '__main__':
     gt_kpts = Variable(torch.FloatTensor(1))
 
   # initilize the network here.
-  stereoRCNN = _RTStereoRCNN(imdb.classes)
+  stereoRCNN = _LTStereoRCNN(imdb.classes)
 
   stereoRCNN.create_architecture()
 
@@ -180,7 +180,7 @@ if __name__ == '__main__':
 
   if args.resume:
     load_name = os.path.join(output_dir,
-      'rt_stereo_rcnn_{}_{}.pth'.format(args.checkepoch, args.checkpoint))
+      'lt_stereo_rcnn_{}_{}.pth'.format(args.checkepoch, args.checkpoint))
     log_string('loading checkpoint %s' % (load_name))
     checkpoint = torch.load(load_name, map_location=available_device)
     args.start_epoch = checkpoint['epoch']
@@ -258,7 +258,7 @@ if __name__ == '__main__':
 
       del loss, rpn_loss_cls, rpn_loss_box_left_right, RCNN_loss_cls, RCNN_loss_bbox, RCNN_loss_dim_orien, RCNN_loss_kpts
 
-    save_name = os.path.join(output_dir, 'rt_stereo_rcnn_{}_{}.pth'.format(epoch, step))
+    save_name = os.path.join(output_dir, 'lt_stereo_rcnn_{}_{}.pth'.format(epoch, step))
     save_checkpoint({
       'epoch': epoch + 1,
       'model': stereoRCNN.state_dict(),

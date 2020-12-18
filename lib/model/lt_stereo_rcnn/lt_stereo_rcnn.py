@@ -17,10 +17,10 @@ from torch.autograd import Variable
 import torchvision.models as models
 
 
-class _RTStereoRCNN(nn.Module):
+class _LTStereoRCNN(nn.Module):
     """ FPN """
     def __init__(self, classes):
-        super(_RTStereoRCNN, self).__init__()
+        super(_LTStereoRCNN, self).__init__()
         self.classes = classes
         self.n_classes = len(classes)
 

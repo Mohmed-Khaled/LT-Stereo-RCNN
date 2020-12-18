@@ -25,7 +25,7 @@ from model.dense_align import dense_align
 from model.roi_layers import nms
 from model.rpn.bbox_transform import bbox_transform_inv, kpts_transform_inv, border_transform_inv
 from model.rpn.bbox_transform import clip_boxes
-from model.rt_stereo_rcnn.rt_stereo_rcnn import _RTStereoRCNN
+from model.lt_stereo_rcnn.lt_stereo_rcnn import _LTStereoRCNN
 from model.utils import box_estimator as box_estimator
 from model.utils import kitti_utils
 from model.utils import vis_3d_utils as vis_utils
@@ -54,14 +54,14 @@ if __name__ == '__main__':
   if not os.path.exists(input_dir):
     raise Exception('There is no input directory for loading network from ' + input_dir)
   load_name = os.path.join(input_dir,
-    'rt_stereo_rcnn_{}_{}.pth'.format(args.checkepoch, args.checkpoint))
+    'lt_stereo_rcnn_{}_{}.pth'.format(args.checkepoch, args.checkpoint))
 
   result_dir = args.load_dir + '/result/'
   if os.path.exists(result_dir):
     shutil.rmtree(result_dir)
 
   # initilize the network here.
-  stereoRCNN = _RTStereoRCNN(imdb.classes)
+  stereoRCNN = _LTStereoRCNN(imdb.classes)
   stereoRCNN.create_architecture()
 
   print("load checkpoint %s" % (load_name))
