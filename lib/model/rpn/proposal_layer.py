@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 from model.roi_layers import nms
 from model.rpn.bbox_transform import bbox_transform_inv, clip_boxes
-from model.rpn.generate_anchors import generate_anchors_single_pyramid
+from model.rpn.generate_anchors import generate_anchors_all_pyramids
 from model.utils.config import cfg
 
 DEBUG = False
@@ -30,13 +30,15 @@ class _ProposalLayer(nn.Module):
     transformations to a set of regular boxes (called "anchors").
     """
 
-    def __init__(self, feat_stride, scales, ratios):
+    def __init__(self, feat_stride, ratios):
         super(_ProposalLayer, self).__init__()
         self._anchor_ratios = ratios
         self._feat_stride = feat_stride
-        self._fpn_scales = np.array(scales)
-        self._fpn_feature_stride = cfg.FPN_FEAT_STRIDE
+        self._fpn_scales = np.array(cfg.FPN_ANCHOR_SCALES)
+        self._fpn_feature_strides = np.array(cfg.FPN_FEAT_STRIDES)
         self._fpn_anchor_stride = cfg.FPN_ANCHOR_STRIDE
+        # self._anchors = torch.from_numpy(generate_anchors_all_pyramids(self._fpn_scales, ratios, self._fpn_feature_strides, fpn_anchor_stride))
+        # self._num_anchors = self._anchors.size(0)
 
     def forward(self, input):
 
@@ -64,7 +66,7 @@ class _ProposalLayer(nn.Module):
         bbox_deltas_right[:,:,2] = bbox_deltas_left_right[:,:,5]
         im_info = input[2]
         cfg_key = input[3]
-        feat_shape = input[4]
+        feat_shapes = input[4]        
 
         pre_nms_topN  = cfg[cfg_key].RPN_PRE_NMS_TOP_N
         post_nms_topN = cfg[cfg_key].RPN_POST_NMS_TOP_N
@@ -73,8 +75,8 @@ class _ProposalLayer(nn.Module):
 
         batch_size = bbox_deltas_left.size(0)
 
-        anchors = torch.from_numpy(generate_anchors_single_pyramid(self._fpn_scales, self._anchor_ratios,
-                feat_shape, self._fpn_feature_stride, self._fpn_anchor_stride)).type_as(scores)
+        anchors = torch.from_numpy(generate_anchors_all_pyramids(self._fpn_scales, self._anchor_ratios, 
+                feat_shapes, self._fpn_feature_strides, self._fpn_anchor_stride)).type_as(scores)
         num_anchors = anchors.size(0)
 
         anchors = anchors.view(1, num_anchors, 4).expand(batch_size, num_anchors, 4)

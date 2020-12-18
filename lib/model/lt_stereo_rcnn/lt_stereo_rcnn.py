@@ -19,7 +19,7 @@ import torchvision.models as models
 
 class _LTStereoRCNN(nn.Module):
     """ FPN """
-    def __init__(self, classes):
+    def __init__(self, classes, backbone_pretrained):
         super(_LTStereoRCNN, self).__init__()
         self.classes = classes
         self.n_classes = len(classes)
@@ -31,7 +31,7 @@ class _LTStereoRCNN(nn.Module):
         self.RCNN_loss_kpts = 0
 
         #define base network
-        self.RCNN_base = models.mobilenet_v2(pretrained=True).features
+        self.RCNN_base = models.mobilenet_v2(pretrained=backbone_pretrained).features
         self.RCNN_base_reduce = nn.Conv2d(1280, 256, kernel_size=1, stride=1, padding=0)
         for p in self.RCNN_base.parameters(): p.requires_grad=False
         self.dout_base_model = 256

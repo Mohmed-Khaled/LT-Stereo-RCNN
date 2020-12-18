@@ -190,8 +190,8 @@ class _ProposalTargetLayer(nn.Module):
             target = torch.cat((kpts_type.type(torch.cuda.FloatTensor)*grid_size+kpts_pos,
                                 target[:,:,4:].type(torch.cuda.FloatTensor)),2)
         else:
-            target = torch.cat((kpts_type.type(torch.FloatTensor) * grid_size + kpts_pos,
-                                target[:, :, 4:].type(torch.FloatTensor)), 2)
+            target = torch.cat((kpts_type.type(torch.cuda.FloatTensor) * grid_size + kpts_pos,
+                                target[:, :, 4:].type(torch.cuda.FloatTensor)), 2)
         weight = target.new(target.size()).zero_() 
         weight[:] = 1 
         weight[target < 0] = 0 
@@ -343,8 +343,3 @@ class _ProposalTargetLayer(nn.Module):
         
         return labels_batch, rois_batch_left, rois_batch_right, gt_assign_batch_left, \
                bbox_targets_left, bbox_targets_right, dim_orien_target, kpts_targets, kpts_weight, bbox_inside_weights_left
-
-
-
-
-
